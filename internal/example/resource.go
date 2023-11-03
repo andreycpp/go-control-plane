@@ -15,6 +15,7 @@
 package example
 
 import (
+	"strconv"
 	"time"
 
 	"google.golang.org/protobuf/types/known/anypb"
@@ -33,11 +34,11 @@ import (
 )
 
 const (
-	ClusterName  = "example_proxy_cluster"
-	RouteName    = "local_route"
-	ListenerName = "listener_0"
+	ClusterName  = "cluster_"
+	RouteName    = "route_"
+	ListenerName = "listener_"
 	ListenerPort = 10000
-	UpstreamHost = "www.envoyproxy.io"
+	UpstreamHost = "1.1.1.1" //"www.envoyproxy.io"
 	UpstreamPort = 80
 )
 
@@ -45,7 +46,7 @@ func makeCluster(clusterName string) *cluster.Cluster {
 	return &cluster.Cluster{
 		Name:                 clusterName,
 		ConnectTimeout:       durationpb.New(5 * time.Second),
-		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_LOGICAL_DNS},
+		//ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_LOGICAL_DNS},
 		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
 		LoadAssignment:       makeEndpoint(clusterName),
 		DnsLookupFamily:      cluster.Cluster_V4_ONLY,
@@ -104,7 +105,7 @@ func makeRoute(routeName string, clusterName string) *route.RouteConfiguration {
 	}
 }
 
-func makeHTTPListener(listenerName string, route string) *listener.Listener {
+func makeHTTPListener(listenerName string, port int, route string) *listener.Listener {
 	routerConfig, _ := anypb.New(&router.Router{})
 	// HTTP filter configuration
 	manager := &hcm.HttpConnectionManager{
@@ -134,7 +135,7 @@ func makeHTTPListener(listenerName string, route string) *listener.Listener {
 					Protocol: core.SocketAddress_TCP,
 					Address:  "0.0.0.0",
 					PortSpecifier: &core.SocketAddress_PortValue{
-						PortValue: ListenerPort,
+						PortValue: uint32(port),
 					},
 				},
 			},
@@ -168,13 +169,34 @@ func makeConfigSource() *core.ConfigSource {
 	return source
 }
 
-func GenerateSnapshot() *cache.Snapshot {
-	snap, _ := cache.NewSnapshot("1",
-		map[resource.Type][]types.Resource{
-			resource.ClusterType:  {makeCluster(ClusterName)},
-			resource.RouteType:    {makeRoute(RouteName, ClusterName)},
-			resource.ListenerType: {makeHTTPListener(ListenerName, RouteName)},
-		},
-	)
+var res map[resource.Type][]types.Resource
+
+func generateResources(max_entries int) {
+	res[resource.ClusterType] = append(res[resource.ClusterType], makeCluster(ClusterName))
+
+	for i := 0; i < max_entries; i+=1 {
+		lname := ListenerName + strconv.Itoa(i)
+		rname := RouteName + strconv.Itoa(i)
+
+		res[resource.RouteType] = append(res[resource.RouteType], makeRoute(rname, ClusterName))
+		res[resource.ListenerType] = append(res[resource.ListenerType], makeHTTPListener(lname, ListenerPort+i, rname))
+	}
+}
+
+func ChangeRouteName(i int, rname string) {
+	lname := ListenerName + strconv.Itoa(i)
+
+	res[resource.RouteType][i] = makeRoute(rname, ClusterName)
+	res[resource.ListenerType][i] = makeHTTPListener(lname, ListenerPort+i, rname)
+}
+
+func GenerateSnapshot(snap_id int, max_entries int) *cache.Snapshot {
+
+	if res == nil {
+		res = map[resource.Type][]types.Resource{}
+		generateResources(max_entries)
+	}
+
+	snap, _ := cache.NewSnapshot(strconv.Itoa(snap_id), res)
 	return snap
 }

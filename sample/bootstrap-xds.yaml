@@ -4,7 +4,7 @@ admin:
   address:
     socket_address:
       address: 127.0.0.1
-      port_value: 19000
+      port_value: 1024
 dynamic_resources:
   cds_config:
     resource_api_version: V3
@@ -38,7 +38,7 @@ static_resources:
             address:
               socket_address:
                 address: 127.0.0.1
-                port_value: 18000
+                port_value: 1025
     http2_protocol_options: {}
     name: xds_cluster
   - connect_timeout: 1s
